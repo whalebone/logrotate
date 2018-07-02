@@ -1,4 +1,4 @@
-FROM blacklabelops/alpine:3.5
+FROM blacklabelops/alpine:3.7
 MAINTAINER Steffen Bleul <sbl@blacklabelops.com>
 
 # logrotate version (e.g. 3.9.1-r0)
@@ -15,7 +15,8 @@ RUN export CONTAINER_USER=logrotate && \
     apk add --update \
       tar \
       gzip \
-      wget && \
+      wget \
+      tzdata && \
     if  [ "${LOGROTATE_VERSION}" = "latest" ]; \
       then apk add logrotate ; \
       else apk add "logrotate=${LOGROTATE_VERSION}" ; \
@@ -43,7 +44,10 @@ ENV LOGROTATE_OLDDIR= \
 
 COPY docker-entrypoint.sh /usr/bin/logrotate.d/docker-entrypoint.sh
 COPY update-logrotate.sh /usr/bin/logrotate.d/update-logrotate.sh
+COPY logrotate.sh /usr/bin/logrotate.d/logrotate.sh
+COPY logrotateConf.sh /usr/bin/logrotate.d/logrotateConf.sh
+COPY logrotateCreateConf.sh /usr/bin/logrotate.d/logrotateCreateConf.sh
 
-ENTRYPOINT ["/usr/bin/logrotate.d/docker-entrypoint.sh"]
+ENTRYPOINT ["/sbin/tini","--","/usr/bin/logrotate.d/docker-entrypoint.sh"]
 VOLUME ["/logrotate-status"]
 CMD ["cron"]
