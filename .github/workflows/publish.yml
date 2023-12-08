@@ -3,7 +3,7 @@ on:
   push:
 
 jobs:
-  epoxy-logstash:
+  build_image:
     runs-on: ubuntu-latest
     permissions:
       contents: read
