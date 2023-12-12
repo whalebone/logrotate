@@ -1,0 +1,48 @@
+name: Build application docker image and push to Harbor
+on:
+  push:
+
+jobs:
+  build_image:
+    if: ${{ startsWith(github.ref, 'refs/heads/master') || startsWith(github.ref, 'refs/tags') }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write # needed for getting GitHub OIDC Token (for sigstore authentication)
+    steps:
+      - name: Get the image tag
+        id: get_tag
+        shell: bash
+        run: |
+          TAG=${{ github.ref_name }}
+          if [[ $GITHUB_REF =~ ^refs/tags/(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-((?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*)(?:\.(?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*))*))?(?:\+([0-9a-zA-Z-]+(?:\.[0-9a-zA-Z-]+)*))?$ ]]; then
+            echo "IMAGE_TAG=harbor.whalebone.io/resolver/logrotate:$TAG" >> $GITHUB_OUTPUT
+          else
+            echo "IMAGE_TAG=harbor.whalebone.io/development/logrotate:$TAG" >> $GITHUB_OUTPUT
+          fi
+      - uses: actions/checkout@v3.5.2
+      - name: Install Cosign
+        uses: sigstore/cosign-installer@v3.1.1
+        with:
+          cosign-release: v2.2.1
+      - name: Check install
+        run: cosign version
+      - name: Login to Harbor
+        uses: docker/login-action@v3
+        with:
+          registry: harbor.whalebone.io
+          username: ${{ secrets.DOCKER_USERNAME  }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+      - name: Build&Push container image
+        id: build-and-push
+        run: |
+          IMAGE_TAG=${{ steps.get_tag.outputs.IMAGE_TAG }}
+          docker build . --file Dockerfile --tag "$IMAGE_TAG"
+          docker push "$IMAGE_TAG"
+          echo "IMAGE_HASH=$(docker inspect --format='{{index .RepoDigests 0}}' $IMAGE_TAG)" >> $GITHUB_OUTPUT
+      - name: Sign image
+        run: |
+          cosign sign --yes ${{ steps.build-and-push.outputs.IMAGE_HASH }}
+      - name: Verify image
+        run: |
+          cosign verify ${{ steps.build-and-push.outputs.IMAGE_HASH }} --certificate-identity-regexp='^https://github.com/whalebone/logrotate/.*' --certificate-oidc-issuer='https://token.actions.githubusercontent.com'
